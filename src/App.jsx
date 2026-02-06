@@ -8,11 +8,8 @@ import MarginCalculator from './components/MarginCalculator';
 import PurchaseTable from './components/PurchaseTable';
 import PurchaseForm from './components/PurchaseForm';
 import { calculateMargin } from './utils/calculations';
-
-// API 서버 주소 (같은 PC에서 실행 시 localhost, 외부 접속 시 PC의 IP 주소로 변경)
-const API_URL = window.location.hostname === 'localhost'
-  ? 'http://localhost:3001/api'
-  : `http://${window.location.hostname}:3001/api`;
+import { db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 function App() {
   const [items, setItems] = useState([]);
@@ -30,35 +27,66 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
-  // 서버에서 데이터 불러오기
+  // Firestore에서 데이터 불러오기
   useEffect(() => {
-    fetchItems();
-    fetchPurchases();
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    await Promise.all([fetchItems(), fetchPurchases()]);
+    setIsLoading(false);
+  };
 
   const fetchItems = async () => {
     try {
-      const res = await fetch(`${API_URL}/items`);
-      if (!res.ok) throw new Error('Server error');
-      const data = await res.json();
-      setItems(data);
+      const docRef = doc(db, "ledgers", "sales");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.items && Array.isArray(data.items)) {
+          setItems(data.items);
+        } else {
+          setItems([]);
+        }
+      } else {
+        // 데이터가 없으면 로컬 스토리지 확인 (마이그레이션 용)
+        const saved = localStorage.getItem('resell-ledger-items');
+        if (saved) {
+          const localItems = JSON.parse(saved);
+          setItems(localItems);
+          // 로컬 데이터를 서버에 최초 업로드
+          await setDoc(docRef, { items: localItems });
+        }
+      }
       setServerError(false);
     } catch (error) {
-      console.error('서버 연결 실패, 로컬 데이터 사용:', error);
+      console.error('Firestore 연결 실패:', error);
       const saved = localStorage.getItem('resell-ledger-items');
       setItems(saved ? JSON.parse(saved) : []);
       setServerError(true);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const fetchPurchases = async () => {
     try {
-      const res = await fetch(`${API_URL}/purchases`);
-      if (!res.ok) throw new Error('Server error');
-      const data = await res.json();
-      setPurchases(data || []);
+      const docRef = doc(db, "ledgers", "purchases");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.items && Array.isArray(data.items)) {
+          setPurchases(data.items);
+        } else {
+          setPurchases([]);
+        }
+      } else {
+        const saved = localStorage.getItem('resell-ledger-purchases');
+        if (saved) {
+          const localPurchases = JSON.parse(saved);
+          setPurchases(localPurchases);
+          await setDoc(docRef, { items: localPurchases });
+        }
+      }
     } catch (error) {
       console.error('구매 데이터 로드 실패:', error);
       const saved = localStorage.getItem('resell-ledger-purchases');
@@ -66,14 +94,10 @@ function App() {
     }
   };
 
-  // 서버에 데이터 저장
+  // Firestore에 데이터 저장 (판매대장)
   const syncToServer = async (newItems) => {
     try {
-      await fetch(`${API_URL}/items`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newItems)
-      });
+      await setDoc(doc(db, "ledgers", "sales"), { items: newItems });
       setServerError(false);
     } catch (error) {
       console.error('서버 동기화 실패:', error);
@@ -193,13 +217,10 @@ function App() {
 
   // --- 구매대장 관련 로직 ---
 
+  // Firestore에 데이터 저장 (구매대장)
   const syncPurchasesToServer = async (newPurchases) => {
     try {
-      await fetch(`${API_URL}/purchases`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPurchases)
-      });
+      await setDoc(doc(db, "ledgers", "purchases"), { items: newPurchases });
     } catch (error) {
       console.error('서버 동기화 실패 (구매):', error);
     }

@@ -5,32 +5,94 @@ import InventoryTable from './components/InventoryTable';
 import ItemForm from './components/ItemForm';
 import ExportModal from './components/ExportModal';
 import MarginCalculator from './components/MarginCalculator';
+import PurchaseTable from './components/PurchaseTable';
+import PurchaseForm from './components/PurchaseForm';
 import { calculateMargin } from './utils/calculations';
 
+// API 서버 주소 (같은 PC에서 실행 시 localhost, 외부 접속 시 PC의 IP 주소로 변경)
+const API_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:3001/api'
+  : `http://${window.location.hostname}:3001/api`;
+
 function App() {
-  const [items, setItems] = useState(() => {
-    const saved = localStorage.getItem('resell-ledger-items');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [items, setItems] = useState([]);
+  const [purchases, setPurchases] = useState([]); // 구매대장 데이터
+  const [activeTab, setActiveTab] = useState('sales'); // 'sales' or 'purchases'
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false); // 구매 폼 모달
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [editingPurchase, setEditingPurchase] = useState(null); // 수정할 구매 아이템
   const [filter, setFilter] = useState('ALL'); // 'ALL', 'SELLING', 'SOLD'
+  const [isLoading, setIsLoading] = useState(true);
+  const [serverError, setServerError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
 
+  // 서버에서 데이터 불러오기
   useEffect(() => {
-    localStorage.setItem('resell-ledger-items', JSON.stringify(items));
-  }, [items]);
+    fetchItems();
+    fetchPurchases();
+  }, []);
 
-  const handleSaveItem = (itemData) => {
-    if (editingItem) {
-      // Update existing
-      setItems(prev => prev.map(item => item.id === editingItem.id ? { ...itemData, id: item.id } : item));
-    } else {
-      // Add new
-      const newItem = { ...itemData, id: Date.now() };
-      setItems(prev => [newItem, ...prev]);
+  const fetchItems = async () => {
+    try {
+      const res = await fetch(`${API_URL}/items`);
+      if (!res.ok) throw new Error('Server error');
+      const data = await res.json();
+      setItems(data);
+      setServerError(false);
+    } catch (error) {
+      console.error('서버 연결 실패, 로컬 데이터 사용:', error);
+      const saved = localStorage.getItem('resell-ledger-items');
+      setItems(saved ? JSON.parse(saved) : []);
+      setServerError(true);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const fetchPurchases = async () => {
+    try {
+      const res = await fetch(`${API_URL}/purchases`);
+      if (!res.ok) throw new Error('Server error');
+      const data = await res.json();
+      setPurchases(data || []);
+    } catch (error) {
+      console.error('구매 데이터 로드 실패:', error);
+      const saved = localStorage.getItem('resell-ledger-purchases');
+      setPurchases(saved ? JSON.parse(saved) : []);
+    }
+  };
+
+  // 서버에 데이터 저장
+  const syncToServer = async (newItems) => {
+    try {
+      await fetch(`${API_URL}/items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newItems)
+      });
+      setServerError(false);
+    } catch (error) {
+      console.error('서버 동기화 실패:', error);
+      setServerError(true);
+    }
+    // 백업으로 로컬에도 저장
+    localStorage.setItem('resell-ledger-items', JSON.stringify(newItems));
+  };
+
+  const handleSaveItem = async (itemData) => {
+    let newItems;
+    if (editingItem) {
+      newItems = items.map(item => item.id === editingItem.id ? { ...itemData, id: item.id } : item);
+    } else {
+      const newItem = { ...itemData, id: Date.now() };
+      newItems = [newItem, ...items];
+    }
+    setItems(newItems);
+    await syncToServer(newItems);
     setIsModalOpen(false);
     setEditingItem(null);
   };
@@ -40,32 +102,154 @@ function App() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteItem = (id) => {
+  const handleDeleteItem = async (id) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      setItems(prev => prev.filter(item => item.id !== id));
+      const newItems = items.filter(item => item.id !== id);
+      setItems(newItems);
+      await syncToServer(newItems);
     }
   };
 
-  const handleStatusToggle = (id, currentStatus) => {
+  const handleStatusToggle = async (id, currentStatus) => {
     const newStatus = currentStatus === 'Selling' ? 'Sold' : 'Selling';
-    setItems(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
+    const newItems = items.map(item => item.id === id ? { ...item, status: newStatus } : item);
+    setItems(newItems);
+    await syncToServer(newItems);
+  };
+
+  // 상품 복사 핸들러
+  const handleCopyItem = async (item) => {
+    const copiedItem = {
+      ...item,
+      id: Date.now(),
+      status: 'Selling', // 복사된 상품은 기본적으로 '판매중'으로 설정
+    };
+    const newItems = [copiedItem, ...items];
+    setItems(newItems);
+    await syncToServer(newItems);
+  };
+
+  // 수동 저장 핸들러
+  const handleManualSave = async () => {
+    setIsSaving(true);
+    try {
+      await syncToServer(items);
+      await syncPurchasesToServer(purchases);
+      setLastSaved(new Date());
+      setTimeout(() => setIsSaving(false), 1000);
+    } catch (error) {
+      console.error('저장 실패:', error);
+      setIsSaving(false);
+      alert('저장에 실패했습니다. 다시 시도해주세요.');
+    }
+  };
+
+  // 백업 다운로드 핸들러
+  const handleBackup = () => {
+    const backupData = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      sales: items,
+      purchases: purchases
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `관리대장_백업_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 복원 핸들러
+  const handleRestore = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const backupData = JSON.parse(e.target.result);
+        if (backupData.sales && backupData.purchases) {
+          if (confirm(`${backupData.timestamp} 백업을 복원하시겠습니까?\n\n현재 데이터가 백업 데이터로 대체됩니다.`)) {
+            setItems(backupData.sales);
+            setPurchases(backupData.purchases);
+            await syncToServer(backupData.sales);
+            await syncPurchasesToServer(backupData.purchases);
+            setLastSaved(new Date());
+            alert('백업이 성공적으로 복원되었습니다!');
+          }
+        } else {
+          alert('올바른 백업 파일이 아닙니다.');
+        }
+      } catch (error) {
+        console.error('복원 실패:', error);
+        alert('백업 파일을 읽는 중 오류가 발생했습니다.');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // 같은 파일 재선택 가능하도록 초기화
+  };
+
+  // --- 구매대장 관련 로직 ---
+
+  const syncPurchasesToServer = async (newPurchases) => {
+    try {
+      await fetch(`${API_URL}/purchases`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPurchases)
+      });
+    } catch (error) {
+      console.error('서버 동기화 실패 (구매):', error);
+    }
+    localStorage.setItem('resell-ledger-purchases', JSON.stringify(newPurchases));
+  };
+
+  const handleSavePurchase = async (purchaseData) => {
+    let newPurchases;
+    if (editingPurchase) {
+      newPurchases = purchases.map(p => p.id === editingPurchase.id ? { ...purchaseData, id: p.id } : p);
+    } else {
+      const newPurchase = { ...purchaseData, id: Date.now() };
+      newPurchases = [newPurchase, ...purchases];
+    }
+    setPurchases(newPurchases);
+    await syncPurchasesToServer(newPurchases);
+    setIsPurchaseModalOpen(false);
+    setEditingPurchase(null);
+  };
+
+  const handleDeletePurchase = async (id) => {
+    if (confirm('정말 삭제하시겠습니까?')) {
+      const newPurchases = purchases.filter(p => p.id !== id);
+      setPurchases(newPurchases);
+      await syncPurchasesToServer(newPurchases);
+    }
+  };
+
+  const handleEditPurchase = (item) => {
+    setEditingPurchase(item);
+    setIsPurchaseModalOpen(true);
+  };
+
+  const handlePurchaseStatusToggle = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'Pending' ? 'Purchased' : 'Pending';
+    const newPurchases = purchases.map(p => p.id === id ? { ...p, status: newStatus } : p);
+    setPurchases(newPurchases);
+    await syncPurchasesToServer(newPurchases);
   };
 
   // Calculate stats
-  // Use calculateMargin utility for consistent logic
   const calculatedItems = items.map(item => ({
     ...item,
     ...calculateMargin(item)
   }));
 
   const totalItems = items.reduce((acc, item) => acc + (Number(item.quantity) || 1), 0);
-  // Investment is Effective Purchase Price sum * Quantity
   const totalCost = calculatedItems.reduce((acc, item) => acc + ((item.effectivePurchasePrice || 0) * (Number(item.quantity) || 1)), 0);
-  const totalRevenue = items.reduce((acc, item) => acc + (Number(item.sellPrice) * (Number(item.quantity) || 1)), 0);
-
-  // Potential Profit is sum of margins * Quantity
+  // 잠재 수익은 마진의 합
   const potentialProfit = calculatedItems.reduce((acc, item) => acc + (item.margin * (Number(item.quantity) || 1)), 0);
-
   const roi = totalCost ? ((potentialProfit / totalCost) * 100).toFixed(1) + '%' : '0%';
 
   const stats = {
@@ -77,72 +261,186 @@ function App() {
 
   return (
     <div className="container">
-      <header className="flex justify-between items-center" style={{ marginBottom: '2.5rem', marginTop: '2rem' }}>
-        <div>
-          <h1 style={{ background: 'linear-gradient(to right, var(--primary), var(--secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            리셀 관리 대장
-          </h1>
-          <p className="text-muted" style={{ marginTop: '0.5rem' }}>재고, 비용, 수익을 한눈에 관리하세요.</p>
+      <header style={{ marginBottom: '2rem', marginTop: '1.5rem' }}>
+        <div className="flex justify-between items-center" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h1 style={{ background: 'linear-gradient(to right, var(--primary), var(--secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              리셀 관리 대장
+            </h1>
+            <p className="text-muted" style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>재고, 비용, 수익을 한눈에 관리하세요.</p>
+          </div>
+          <div className="flex items-center" style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+            {activeTab === 'sales' ? (
+              <>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setIsModalOpen(true)}
+                >
+                  + 상품 추가
+                </button>
+                <button
+                  className="btn glass"
+                  onClick={() => setIsExportOpen(true)}
+                >
+                  📊 엑셀 내보내기
+                </button>
+                <button
+                  className="btn glass"
+                  onClick={() => setIsCalculatorOpen(true)}
+                >
+                  🧮 마진 계산기
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                onClick={() => setIsPurchaseModalOpen(true)}
+              >
+                + 구매 상품 추가
+              </button>
+            )}
+          </div>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => setIsModalOpen(true)}
-        >
-          + 상품 추가
-        </button>
-        <button
-          className="btn"
-          style={{ marginLeft: '1rem', background: 'rgba(255,255,255,0.1)' }}
-          onClick={() => setIsExportOpen(true)}
-        >
-          엑셀 내보내기
-        </button>
-        <button
-          className="btn"
-          style={{ marginLeft: '1rem', background: 'rgba(255,255,255,0.1)' }}
-          onClick={() => setIsCalculatorOpen(true)}
-        >
-          🧮 마진 계산기
-        </button>
       </header>
 
-      <main className="flex flex-col gap-6">
-        <Dashboard stats={stats} />
-
-        {/* Filter Tabs */}
-        <div className="flex gap-2 border-b border-white/10 pb-1">
+      {/* Main Tab Navigation */}
+      <div className="flex gap-4 mb-4 border-b border-white/10 overflow-x-auto pb-1" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="flex gap-4">
           <button
-            className={`btn ${filter === 'ALL' ? 'btn-primary' : 'glass'}`}
-            onClick={() => setFilter('ALL')}
-            style={{ borderRadius: '8px 8px 0 0', borderBottom: filter === 'ALL' ? '2px solid var(--secondary)' : 'none' }}
+            className={`text-lg font-bold pb-2 px-4 ${activeTab === 'sales' ? 'text-white border-b-2 border-primary' : 'text-muted hover:text-white'}`}
+            onClick={() => setActiveTab('sales')}
           >
-            전체보기
+            📄 판매 대장
           </button>
           <button
-            className={`btn ${filter === 'SELLING' ? 'btn-primary' : 'glass'}`}
-            onClick={() => setFilter('SELLING')}
-            style={{ borderRadius: '8px 8px 0 0', borderBottom: filter === 'SELLING' ? '2px solid var(--secondary)' : 'none' }}
+            className={`text-lg font-bold pb-2 px-4 ${activeTab === 'purchases' ? 'text-white border-b-2 border-secondary' : 'text-muted hover:text-white'}`}
+            onClick={() => setActiveTab('purchases')}
           >
-            판매중 (Selling)
-          </button>
-          <button
-            className={`btn ${filter === 'SOLD' ? 'btn-primary' : 'glass'}`}
-            onClick={() => setFilter('SOLD')}
-            style={{ borderRadius: '8px 8px 0 0', borderBottom: filter === 'SOLD' ? '2px solid var(--secondary)' : 'none' }}
-          >
-            판매완료 (Sold)
+            🛒 구매 대장
           </button>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {lastSaved && (
+            <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+              마지막 저장: {lastSaved.toLocaleTimeString('ko-KR')}
+            </span>
+          )}
+          <button
+            onClick={handleManualSave}
+            disabled={isSaving}
+            style={{
+              padding: '8px 16px',
+              background: isSaving ? '#10B981' : 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: isSaving ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)'
+            }}
+          >
+            {isSaving ? '✓ 저장됨!' : '💾 저장하기'}
+          </button>
+          <button
+            onClick={handleBackup}
+            style={{
+              padding: '8px 12px',
+              background: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)'
+            }}
+            title="데이터 백업 다운로드"
+          >
+            📥 백업
+          </button>
+          <label style={{
+            padding: '8px 12px',
+            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: 600,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)'
+          }}>
+            📤 복원
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleRestore}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
+      </div>
 
-        <InventoryTable
-          items={calculatedItems.filter(item => {
-            if (filter === 'ALL') return true;
-            return filter === 'SOLD' ? item.status === 'Sold' : item.status !== 'Sold';
-          })}
-          onEdit={handleEditItem}
-          onDelete={handleDeleteItem}
-          onStatusToggle={handleStatusToggle}
-        />
+      <main className="flex flex-col gap-6">
+        {activeTab === 'sales' ? (
+          <>
+            <Dashboard stats={stats} />
+
+            {/* Filter Tabs */}
+            <div className="flex gap-2 border-b border-white/10 pb-1">
+              <button
+                className={`btn ${filter === 'ALL' ? 'btn-primary' : 'glass'}`}
+                onClick={() => setFilter('ALL')}
+                style={{ borderRadius: '8px 8px 0 0', borderBottom: filter === 'ALL' ? '2px solid var(--secondary)' : 'none' }}
+              >
+                전체보기
+              </button>
+              <button
+                className={`btn ${filter === 'SELLING' ? 'btn-primary' : 'glass'}`}
+                onClick={() => setFilter('SELLING')}
+                style={{ borderRadius: '8px 8px 0 0', borderBottom: filter === 'SELLING' ? '2px solid var(--secondary)' : 'none' }}
+              >
+                판매중 (Selling)
+              </button>
+              <button
+                className={`btn ${filter === 'SOLD' ? 'btn-primary' : 'glass'}`}
+                onClick={() => setFilter('SOLD')}
+                style={{ borderRadius: '8px 8px 0 0', borderBottom: filter === 'SOLD' ? '2px solid var(--secondary)' : 'none' }}
+              >
+                판매완료 (Sold)
+              </button>
+            </div>
+
+            <InventoryTable
+              items={calculatedItems.filter(item => {
+                if (filter === 'ALL') return true;
+                return filter === 'SOLD' ? item.status === 'Sold' : item.status !== 'Sold';
+              })}
+              onEdit={handleEditItem}
+              onDelete={handleDeleteItem}
+              onStatusToggle={handleStatusToggle}
+              onCopy={handleCopyItem}
+            />
+          </>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="glass-panel p-4">
+              <h2 className="text-xl font-bold mb-1">구매 예정 및 내역</h2>
+              <p className="text-sm text-muted">구매할 상품과 구매 완료된 상품을 관리합니다.</p>
+            </div>
+
+            <PurchaseTable
+              items={purchases}
+              onEdit={handleEditPurchase}
+              onDelete={handleDeletePurchase}
+              onStatusToggle={handlePurchaseStatusToggle}
+            />
+          </div>
+        )}
       </main>
 
       <ItemForm
@@ -150,6 +448,13 @@ function App() {
         onClose={() => { setIsModalOpen(false); setEditingItem(null); }}
         onSubmit={handleSaveItem}
         initialData={editingItem}
+      />
+
+      <PurchaseForm
+        isOpen={isPurchaseModalOpen}
+        onClose={() => { setIsPurchaseModalOpen(false); setEditingPurchase(null); }}
+        onSubmit={handleSavePurchase}
+        initialData={editingPurchase}
       />
 
       <ExportModal

@@ -12,7 +12,7 @@ function Login({ onLogin }) {
 
             // 사용자 이메일 확인 (보안 강화)
             if (user.email !== 'pwg0218@gmail.com') {
-                alert('접근 권한이 없는 계정 (관리자만 가능)');
+                alert(`접근 권한이 없습니다.\n\n현재 로그인된 계정: ${user.email}\n\n이 계정이 사장님 계정이 맞다면, 이 화면을 캡처해서 알려주세요!`);
                 await auth.signOut();
                 return;
             }

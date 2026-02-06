@@ -11,12 +11,11 @@ function Login({ onLogin }) {
             const user = result.user;
 
             // 사용자 이메일 확인 (보안 강화)
-            // 본인 이메일만 허용하려면 아래 조건을 수정하세요.
-            // if (user.email !== 'pwg0218@gmail.com') {
-            //   alert('접근 권한이 없는 계정입니다.');
-            //   await auth.signOut();
-            //   return;
-            // }
+            if (user.email !== 'pwg0218@gmail.com') {
+                alert('접근 권한이 없는 계정 (관리자만 가능)');
+                await auth.signOut();
+                return;
+            }
 
             onLogin(user);
         } catch (error) {

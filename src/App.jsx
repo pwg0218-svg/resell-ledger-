@@ -7,12 +7,17 @@ import ExportModal from './components/ExportModal';
 import MarginCalculator from './components/MarginCalculator';
 import PurchaseTable from './components/PurchaseTable';
 import PurchaseForm from './components/PurchaseForm';
+import Login from './components/Login';  // Login 컴포넌트 추가
 import { calculateMargin } from './utils/calculations';
-import { db } from './firebase';
+import { db, auth } from './firebase'; // auth 추가
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth'; // Auth 함수 추가
 
 function App() {
+  const [user, setUser] = useState(null); // 사용자 상태
+  const [authInitialized, setAuthInitialized] = useState(false); // 인증 초기화 상태
   const [items, setItems] = useState([]);
+
   const [purchases, setPurchases] = useState([]); // 구매대장 데이터
   const [activeTab, setActiveTab] = useState('sales'); // 'sales' or 'purchases'
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,16 +32,35 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
-  // Firestore에서 데이터 불러오기
+  // 인증 상태 감지
   useEffect(() => {
-    fetchData();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthInitialized(true);
+    });
+    return () => unsubscribe();
   }, []);
+
+  // Firestore에서 데이터 불러오기 (로그인 된 경우만)
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
 
   const fetchData = async () => {
     setIsLoading(true);
     await Promise.all([fetchItems(), fetchPurchases()]);
     setIsLoading(false);
   };
+
+  if (!authInitialized) {
+    return <div className="flex justify-center items-center min-h-screen text-white">Loading...</div>;
+  }
+
+  if (!user) {
+    return <Login onLogin={setUser} />;
+  }
 
   const fetchItems = async () => {
     try {
@@ -291,6 +315,16 @@ function App() {
             <p className="text-muted" style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>재고, 비용, 수익을 한눈에 관리하세요.</p>
           </div>
           <div className="flex items-center" style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-sm text-gray-400">{user.email}</span>
+              <button
+                onClick={() => signOut(auth)}
+                className="text-xs bg-red-500/20 text-red-500 px-2 py-1 rounded hover:bg-red-500/30 transition-colors"
+                title="로그아웃"
+              >
+                나가기
+              </button>
+            </div>
             {activeTab === 'sales' ? (
               <>
                 <button

@@ -47,18 +47,13 @@ function RestorePageContent() {
     const [editingSaleItem, setEditingSaleItem] = useState<InventoryItem | null>(null);
     const [editingPurchaseItem, setEditingPurchaseItem] = useState<PurchaseItem | null>(null);
 
-    // DEBUG LOGGING STATE
-    const [debugLogs, setDebugLogs] = useState<string[]>(['🚀 App Initializing...']);
-    const addLog = (msg: string) => setDebugLogs(prev => [...prev, `${new Date().toISOString().split('T')[1].slice(0, 8)}: ${msg}`]);
+
 
     useEffect(() => {
-        addLog("Checking Auth State...");
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            addLog(`Auth State Changed: ${currentUser ? 'User Found (' + currentUser.email + ')' : 'No User'}`);
             setUser(currentUser);
             if (!currentUser) {
                 setIsLoading(false);
-                addLog("Loading set to false (No User)");
             }
         });
         return () => unsubscribe();
@@ -66,7 +61,6 @@ function RestorePageContent() {
 
     useEffect(() => {
         if (user) {
-            addLog("User Present. Fetching Data...");
             refreshData();
         }
     }, [user]);
@@ -574,10 +568,7 @@ function RestorePageContent() {
                 isOpen={isCalculatorOpen}
                 onClose={() => setIsCalculatorOpen(false)}
             />
-            {/* DEBUG LOG OVERLAY */}
-            <div className="fixed top-0 left-0 w-full bg-black/80 text-green-400 p-2 text-xs font-mono z-[9999] pointer-events-none opacity-80 break-words">
-                {debugLogs.slice(-10).map((log, i) => <div key={i} className="border-b border-white/10">{log}</div>)}
-            </div>
+
         </div>
     )
 }

@@ -404,7 +404,7 @@ function RestorePageContent() {
                         <p className="text-xs text-gray-400 mt-1 font-medium">{user.displayName}님의 연구실</p>
                     </div>
                     <div className="ml-auto md:hidden">
-                        <Button variant="ghost" size="icon" onClick={refreshData} disabled={isLoading}>
+                        <Button onClick={refreshData} disabled={isLoading} className="p-2 bg-transparent hover:bg-gray-100 rounded-md">
                             <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
                         </Button>
                     </div>

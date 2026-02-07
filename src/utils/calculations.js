@@ -9,6 +9,9 @@ export const calculateMargin = (item) => {
     // Fee Logic: 15,000 if <= 150k, else 10%
     const fee = sellPrice <= 150000 ? 15000 : Math.floor(sellPrice * 0.1);
 
+    // Effective Purchase Price = Purchase Price * Discount Rate (if applicable)
+    const effectivePurchasePrice = Math.floor(purchasePrice * discountRate);
+
     // VAT Effect Logic
     const purchaseVat = Math.floor((effectivePurchasePrice / 1.1) * 0.1);
     const salesVat = item.saleType === 'domestic' ? Math.floor((sellPrice / 1.1) * 0.1) : 0;

@@ -1,9 +1,7 @@
 import { useState } from 'react';
 
-// API URL (서버 주소와 동일하게 맞춤)
-const API_BASE = window.location.hostname === 'localhost'
-    ? 'http://localhost:3001'
-    : `http://${window.location.hostname}:3001`;
+// API URL (Vite 프록시 설정을 통해 상대 경로 사용)
+const API_BASE = '';
 
 export default function PurchaseTable({ items, onEdit, onDelete, onStatusToggle }) {
     const [viewMode, setViewMode] = useState('daily'); // daily, weekly, monthly, all

@@ -11,7 +11,7 @@ import SalesProjector from "@/components/original/SalesProjector"
 import { Button } from "@/components/ui/button"
 import { db, auth } from "@/lib/firebase"
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from "firebase/auth"
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, User } from "firebase/auth"
 import { Calculator, Bot, Plus, Camera, Search, RefreshCw } from "lucide-react"
 
 export default function RestorePage() {
@@ -88,9 +88,17 @@ export default function RestorePage() {
         }
     }
 
+    useEffect(() => {
+        // Handle Redirect Result (Mobile Login)
+        getRedirectResult(auth).catch((error) => {
+            console.error("Redirect login failed", error);
+        });
+    }, []);
+
     const handleLogin = async () => {
         try {
-            await signInWithPopup(auth, new GoogleAuthProvider());
+            // Use Redirect for better mobile support (avoids 403 disallowed_useragent)
+            await signInWithRedirect(auth, new GoogleAuthProvider());
         } catch (error) {
             console.error("Login failed", error);
         }

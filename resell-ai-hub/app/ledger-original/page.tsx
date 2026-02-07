@@ -100,17 +100,32 @@ function RestorePageContent() {
 
     useEffect(() => {
         // Handle Redirect Result (Mobile Login)
-        getRedirectResult(auth).catch((error) => {
+        getRedirectResult(auth).then((result) => {
+            if (result) {
+                console.log("Redirect login success:", result.user);
+                // User state will be updated by onAuthStateChanged
+            }
+        }).catch((error) => {
             console.error("Redirect login failed", error);
+            alert("로그인 실패 (Redirect): " + error.message);
         });
     }, []);
 
-    const handleLogin = async () => {
+    const handleLoginRedirect = async () => {
         try {
-            // Use Redirect for better mobile support (avoids 403 disallowed_useragent)
             await signInWithRedirect(auth, new GoogleAuthProvider());
-        } catch (error) {
+        } catch (error: any) {
             console.error("Login failed", error);
+            alert("로그인 시작 실패: " + error.message);
+        }
+    };
+
+    const handleLoginPopup = async () => {
+        try {
+            await signInWithPopup(auth, new GoogleAuthProvider());
+        } catch (error: any) {
+            console.error("Popup Login failed", error);
+            alert("팝업 로그인 실패: " + error.message);
         }
     };
 
@@ -353,9 +368,12 @@ function RestorePageContent() {
                         <p className="mb-6 text-gray-500 text-sm">
                             안전한 데이터 관리를 위해<br />Google 계정으로 로그인해주세요.
                         </p>
-                        <Button onClick={handleLogin} className="w-full bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-bold py-6 rounded-xl transition-all hover:shadow-md">
+                        <Button onClick={handleLoginRedirect} className="w-full bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-bold py-6 rounded-xl transition-all hover:shadow-md mb-3">
                             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5 mr-3" />
-                            Google 계정으로 계속하기
+                            Google 계정으로 로그인 (기본)
+                        </Button>
+                        <Button onClick={handleLoginPopup} className="w-full text-xs text-gray-400 hover:text-gray-600 bg-transparent hover:bg-transparent shadow-none border-none">
+                            (혹시 안 되면) 팝업으로 시도하기
                         </Button>
                     </div>
                 </div>

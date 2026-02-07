@@ -1,12 +1,16 @@
 import TelegramBot from 'node-telegram-bot-api';
 
-// Configuration (Hardcoded for immediate use, recommend .env for production)
-const token = '8409217855:AAEITVi_tDmWPgWse5yLO1mHAKGx13g4Ils';
-const chatId = '8283594833';
+// Configuration (Use Environment Variables for security)
+const token = process.env.NEXT_PUBLIC_TELEGRAM_BOT_TOKEN || '';
+const chatId = process.env.NEXT_PUBLIC_TELEGRAM_CHAT_ID || '';
 
-const bot = new TelegramBot(token, { polling: false });
+const bot = token ? new TelegramBot(token, { polling: false }) : null;
 
 export async function sendTelegramMessage(message: string) {
+    if (!bot) {
+        console.warn("Telegram bot token not configured. Skipping message.");
+        return;
+    }
     try {
         await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         console.log("Telegram message sent successfully.");

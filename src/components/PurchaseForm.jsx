@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // API URL (서버 주소와 동일하게 맞춤)
 const API_BASE = window.location.hostname === 'localhost'
@@ -25,6 +25,11 @@ export default function PurchaseForm({ isOpen, onClose, onSubmit, initialData })
     });
 
     const [isUploading, setIsUploading] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isAiApplied, setIsAiApplied] = useState(false);
+
+    const cameraInputRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         if (initialData) {
@@ -50,6 +55,7 @@ export default function PurchaseForm({ isOpen, onClose, onSubmit, initialData })
                 status: 'Purchased',
                 imageUrl: ''
             });
+            setIsAiApplied(false);
         }
     }, [initialData, isOpen]);
 
@@ -112,11 +118,66 @@ export default function PurchaseForm({ isOpen, onClose, onSubmit, initialData })
             const data = await res.json();
             // 서버에서 받은 상대 경로 저장 (/uploads/filename)
             setFormData(prev => ({ ...prev, imageUrl: data.url }));
+
+            // AI 분석 요청
+            await analyzeReceipt(data.url);
+
         } catch (error) {
             console.error('Upload Error:', error);
             alert('이미지 업로드에 실패했습니다.');
         } finally {
             setIsUploading(false);
+        }
+    };
+
+    // AI 영수증 분석 함수
+    const analyzeReceipt = async (imageUrl) => {
+        setIsAnalyzing(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/analyze-receipt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageUrl })
+            });
+
+            if (!res.ok) throw new Error('Analysis failed');
+
+            const data = await res.json();
+
+            // 데이터 매핑 및 폼 업데이트
+            setFormData(prev => {
+                const updated = {
+                    ...prev,
+                    purchaseDate: data.purchaseDate || prev.purchaseDate,
+                    source: data.source || prev.source,
+                    name: data.name || prev.name,
+                    paymentMethod: data.paymentMethod || prev.paymentMethod
+                };
+
+                // 합계 금액 업데이트 (기존 handleTotalChange 로직 활용)
+                if (data.totalPrice) {
+                    const total = Number(data.totalPrice);
+                    updated.totalPrice = data.totalPrice;
+                    if (prev.proofType === 'invoice_free' || prev.proofType === 'simple_receipt') {
+                        updated.supplyPrice = total;
+                        updated.vat = 0;
+                    } else {
+                        updated.supplyPrice = Math.round(total / 1.1);
+                        updated.vat = total - updated.supplyPrice;
+                    }
+                }
+
+                return updated;
+            });
+
+            setIsAiApplied(true);
+            setTimeout(() => setIsAiApplied(false), 3000); // 3초간 배지 표시
+
+        } catch (error) {
+            console.error('AI Analysis Error:', error);
+            // 분석 실패 시 사용자에게 알림 (선택 사항, 수동 입력 유도)
+        } finally {
+            setIsAnalyzing(false);
         }
     };
 
@@ -245,22 +306,49 @@ export default function PurchaseForm({ isOpen, onClose, onSubmit, initialData })
                                 )}
 
                                 <div className="flex-1">
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => cameraInputRef.current?.click()}
+                                            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-primary text-white rounded-xl font-bold shadow-sm hover:bg-primary-hover active:scale-95 transition-all text-sm"
+                                        >
+                                            <span>📷</span> 카메라 촬영
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-white text-gray-700 border border-gray-200 rounded-xl font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all text-sm"
+                                        >
+                                            <span>📁</span> 갤러리 선택
+                                        </button>
+                                    </div>
+
+                                    {/* 숨겨진 파일 입력 (카메라 전용) */}
                                     <input
                                         type="file"
+                                        ref={cameraInputRef}
+                                        accept="image/*"
+                                        capture="environment"
+                                        onChange={handleFileUpload}
+                                        className="hidden"
+                                    />
+                                    {/* 숨겨진 파일 입력 (갤러리/파일) */}
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
                                         accept="image/*"
                                         onChange={handleFileUpload}
-                                        className="block w-full text-sm text-slate-500
-                                          file:mr-4 file:py-2 file:px-4
-                                          file:rounded-full file:border-0
-                                          file:text-sm file:font-semibold
-                                          file:bg-violet-50 file:text-violet-700
-                                          hover:file:bg-violet-100
-                                        "
-                                        disabled={isUploading}
+                                        className="hidden"
                                     />
-                                    <p className="text-xs text-muted mt-2">
-                                        {isUploading ? '업로드 중...' : 'JPG, PNG 파일을 선택하세요. (최대 10MB)'}
+
+                                    <p className="text-xs text-muted mt-3">
+                                        {isUploading ? '업로드 중...' : (isAnalyzing ? '✨ AI가 내용을 분석하고 있습니다...' : '영수증을 촬영하거나 사진을 선택하세요. (최대 10MB)')}
                                     </p>
+                                    {isAiApplied && (
+                                        <div className="mt-2 text-xs font-bold text-primary animate-bounce">
+                                            ✨ AI가 영수증 정보를 자동으로 입력했습니다!
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

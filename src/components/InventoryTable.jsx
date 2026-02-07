@@ -73,6 +73,7 @@ export default function InventoryTable({ items, onEdit, onDelete, onStatusToggle
                     <thead>
                         <tr style={{ background: 'linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%)' }}>
                             <th style={{ ...thStyle, minWidth: '70px' }}>상태</th>
+                            <th style={{ ...thStyle, minWidth: '65px' }}>유형</th>
                             <th style={{ ...thStyle, minWidth: '45px' }}>수량</th>
                             <th style={{ ...thStyle, minWidth: '45px' }}>사진</th>
                             <th style={{ ...thStyle, minWidth: '70px', textAlign: 'left' }}>브랜드</th>
@@ -201,6 +202,29 @@ export default function InventoryTable({ items, onEdit, onDelete, onStatusToggle
                                                     >
                                                         {item.status === 'Sold' ? '판매완료' : '판매중'}
                                                     </button>
+                                                </td>
+
+                                                {/* 1.5 Type (Export/Domestic) */}
+                                                <td style={{ padding: '0.75rem' }}>
+                                                    {item.saleType === 'domestic' ? (
+                                                        <span style={{
+                                                            fontSize: '0.7rem',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            background: 'rgba(245, 158, 11, 0.15)',
+                                                            color: '#D97706',
+                                                            fontWeight: 700
+                                                        }}>국내</span>
+                                                    ) : (
+                                                        <span style={{
+                                                            fontSize: '0.7rem',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            background: 'rgba(59, 130, 246, 0.15)',
+                                                            color: '#2563EB',
+                                                            fontWeight: 700
+                                                        }}>수출</span>
+                                                    )}
                                                 </td>
 
                                                 {/* 2. Quantity */}

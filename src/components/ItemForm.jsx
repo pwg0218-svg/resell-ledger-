@@ -21,7 +21,8 @@ export default function ItemForm({ isOpen, onClose, onSubmit, initialData }) {
         status: 'Selling',
         cardCompany: '',
         quantity: 1,
-        soldQuantity: 0  // 판매된 수량
+        soldQuantity: 0,
+        saleType: 'export' // 'export' (부가세 환급) vs 'domestic' (부가세 납부)
     });
 
     useEffect(() => {
@@ -46,7 +47,8 @@ export default function ItemForm({ isOpen, onClose, onSubmit, initialData }) {
                 status: 'Selling',
                 cardCompany: '',
                 quantity: 1,
-                soldQuantity: 0
+                soldQuantity: 0,
+                saleType: 'export'
             });
         }
     }, [initialData, isOpen]);
@@ -431,6 +433,54 @@ export default function ItemForm({ isOpen, onClose, onSubmit, initialData }) {
                         </div>
                     </div>
 
+                    <div className="flex flex-col gap-2">
+                        <label className="text-sm" style={{ color: '#000000', fontWeight: '600' }}>판매 유형 (부가세 구분)</label>
+                        <div className="flex gap-4 items-center">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="saleType"
+                                    value="export"
+                                    checked={formData.saleType === 'export'}
+                                    onChange={handleChange}
+                                />
+                                <span style={{
+                                    padding: '4px 10px',
+                                    background: formData.saleType === 'export' ? 'var(--primary)' : 'rgba(0,0,0,0.05)',
+                                    color: formData.saleType === 'export' ? 'white' : '#000000',
+                                    borderRadius: '12px',
+                                    fontWeight: 700,
+                                    fontSize: '0.8rem',
+                                    transition: 'all 0.2s'
+                                }}>
+                                    ✈️ 수출 (환급 O)
+                                </span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="saleType"
+                                    value="domestic"
+                                    checked={formData.saleType === 'domestic'}
+                                    onChange={handleChange}
+                                />
+                                <span style={{
+                                    padding: '4px 10px',
+                                    background: formData.saleType === 'domestic' ? '#F59E0B' : 'rgba(0,0,0,0.05)',
+                                    color: formData.saleType === 'domestic' ? 'white' : '#000000',
+                                    borderRadius: '12px',
+                                    fontWeight: 700,
+                                    fontSize: '0.8rem',
+                                    transition: 'all 0.2s'
+                                }}>
+                                    🏠 국내 (일반)
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="h-px bg-black/10 my-2"></div>
+
                     {/* Verification Block */}
                     <div className="glass" style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.5)', borderRadius: '8px', fontSize: '0.8rem', color: '#000000' }}>
                         <div className="flex justify-between mb-1">
@@ -438,9 +488,17 @@ export default function ItemForm({ isOpen, onClose, onSubmit, initialData }) {
                             <span>₩{calculateMargin(formData).fee.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between mb-1">
-                            <span style={{ fontWeight: 600 }}>부가세 환급 (VAT):</span>
-                            <span style={{ fontWeight: 700 }}>+₩{calculateMargin(formData).vatRefund.toLocaleString()}</span>
+                            <span style={{ fontWeight: 600 }}>부가세 {formData.saleType === 'export' ? '환급' : '정산'}:</span>
+                            <span style={{ fontWeight: 700, color: calculateMargin(formData).vatRefund >= 0 ? '#10B981' : '#EF4444' }}>
+                                {calculateMargin(formData).vatRefund >= 0 ? '+' : ''}
+                                ₩{calculateMargin(formData).vatRefund.toLocaleString()}
+                            </span>
                         </div>
+                        {formData.saleType === 'domestic' && (
+                            <div className="flex justify-between mb-1" style={{ fontSize: '0.7rem', opacity: 0.7 }}>
+                                <span>(매입 +{calculateMargin(formData).purchaseVat.toLocaleString()} / 매출 -{calculateMargin(formData).salesVat.toLocaleString()})</span>
+                            </div>
+                        )}
                         <div className="flex justify-between pt-2 border-t border-black/10 font-bold mb-1">
                             <span>기본 마진 (Basic):</span>
                             <span>₩{calculateMargin(formData).basicMargin.toLocaleString()}</span>

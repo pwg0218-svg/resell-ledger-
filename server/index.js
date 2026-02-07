@@ -4,6 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -184,6 +190,74 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
         filename: req.file.filename,
         originalName: req.file.originalname
     });
+});
+
+// 영수증 분석 API
+app.post('/api/analyze-receipt', async (req, res) => {
+    try {
+        const { imageUrl } = req.body;
+        if (!imageUrl) {
+            return res.status(400).json({ error: 'Image URL is required' });
+        }
+
+        const imagePath = path.join(__dirname, imageUrl);
+        if (!fs.existsSync(imagePath)) {
+            return res.status(404).json({ error: 'Image file not found' });
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        const imageData = fs.readFileSync(imagePath);
+        const base64Image = imageData.toString('base64');
+
+        const prompt = `
+            사용자가 운동화나 의류 등을 구매한 영수증 사진을 업로드했습니다. 
+            이 영수증에서 다음 정보를 추출하여 반드시 JSON 형식으로만 응답해주세요. 
+            응답에 JSON 외의 다른 텍스트는 포함하지 마세요.
+
+            필수 추출 정보:
+            1. purchaseDate: 거래일자 (YYYY-MM-DD 형식)
+            2. source: 거래처명 (상호명, 예: 나이키 가산점, ABC마트 등)
+            3. totalPrice: 합계 금액 (숫자만)
+            4. name: 주요 구매 상품명 (가장 비싼 품목 하나 또는 요약)
+            5. paymentMethod: 결제 수단 (card, cash, transfer 중 하나로 매핑)
+
+            JSON 예시:
+            {
+                "purchaseDate": "2024-05-20",
+                "source": "ABC마트 명동점",
+                "totalPrice": 129000,
+                "name": "나이키 에어포스 1",
+                "paymentMethod": "card"
+            }
+        `;
+
+        const result = await model.generateContent([
+            prompt,
+            {
+                inlineData: {
+                    data: base64Image,
+                    mimeType: "image/jpeg" // 업로드된 파일의 실제 타입에 맞춰 개선 가능
+                }
+            }
+        ]);
+
+        const response = await result.response;
+        const text = response.text();
+        
+        // JSON 추출 (마크다운 코드 블록 제거 등)
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('Failed to parse AI response as JSON');
+        }
+        
+        const structuredData = JSON.parse(jsonMatch[0]);
+        res.json(structuredData);
+
+    } catch (error) {
+        console.error('AI Analysis Error:', error);
+        res.status(500).json({ error: '영수증 분석 중 오류가 발생했습니다.' });
+    }
 });
 
 // 서버 시작

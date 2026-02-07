@@ -291,7 +291,7 @@ function RestorePageContent() {
         let updatedItems: PurchaseItem[];
 
         if (editingPurchaseItem) {
-            newItem = { ...data, id: editingPurchaseItem.id };
+            newItem = { ...data, id: editingPurchaseItem.id } as PurchaseItem;
             updatedItems = purchaseItems.map(item => item.id === editingPurchaseItem.id ? newItem : item);
         } else {
             newItem = { ...data, id: Date.now().toString() } as PurchaseItem;

@@ -76,7 +76,7 @@ export function InventoryTable({ items, onEdit, onDelete, onStatusToggle, onCopy
     // Grouping Logic
     const getGroupedItems = () => {
         const groups: { [key: string]: InventoryItem[] } = {};
-        items.forEach(item => {
+        (items || []).forEach(item => {
             const key = item.name || 'Unknown';
             if (!groups[key]) {
                 groups[key] = [];
@@ -101,7 +101,7 @@ export function InventoryTable({ items, onEdit, onDelete, onStatusToggle, onCopy
     // Export Logic (Fixed for Korean Encoding with BOM)
     const handleExport = () => {
         const headers = ['Brand', 'ModelName', 'Size', 'SizeKR', 'Price', 'Fee', 'Margin', 'Channels'];
-        const rows = items.map(item => [
+        const rows = (items || []).map(item => [
             item.brand,
             item.name,
             item.size,

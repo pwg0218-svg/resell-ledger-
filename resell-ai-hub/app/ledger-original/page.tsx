@@ -14,7 +14,17 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebas
 import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, User } from "firebase/auth"
 import { Calculator, Bot, Plus, Camera, Search, RefreshCw } from "lucide-react"
 
+import { Suspense } from 'react'
+
 export default function RestorePage() {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center text-lg">로딩 중...</div>}>
+            <RestorePageContent />
+        </Suspense>
+    )
+}
+
+function RestorePageContent() {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'sales' | 'purchases'>('sales');

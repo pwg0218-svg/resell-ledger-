@@ -22,7 +22,8 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // 업로드 폴더 정적 서빙
 app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -46,13 +47,14 @@ const storage = multer.diskStorage({
         cb(null, UPLOADS_DIR);
     },
     filename: function (req, file, cb) {
-        // 한글 깨짐 방지를 위해 인코딩 처리 (선택사항, 기본적으로 OS 처리)
-        // 파일명 충돌 방지를 위해 타임스탬프 추가
-        file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        // 타임스탬프와 원본 이름을 조합하여 파일명 생성
         cb(null, Date.now() + '_' + file.originalname);
     }
 });
-const upload = multer({ storage: storage });
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB 제한
+});
 
 
 // Read data
@@ -176,20 +178,30 @@ app.put('/api/purchases', (req, res) => {
 });
 
 // POST - 파일 업로드
-app.post('/api/upload', upload.single('file'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
+app.post('/api/upload', (req, res, next) => {
+    console.log('Upload request received');
+    next();
+}, upload.single('file'), (req, res) => {
+    try {
+        if (!req.file) {
+            console.error('No file in request');
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        console.log('File uploaded successfully:', req.file.filename);
+        // 파일 URL 생성 (클라이언트에서 접근 가능하도록)
+        const fileUrl = `/uploads/${req.file.filename}`;
+
+        res.json({
+            success: true,
+            url: fileUrl,
+            filename: req.file.filename,
+            originalName: req.file.originalname
+        });
+    } catch (err) {
+        console.error('Upload handler error:', err);
+        res.status(500).json({ error: 'Upload handler failed' });
     }
-
-    // 파일 URL 생성 (클라이언트에서 접근 가능하도록)
-    const fileUrl = `/uploads/${req.file.filename}`;
-
-    res.json({
-        success: true,
-        url: fileUrl,
-        filename: req.file.filename,
-        originalName: req.file.originalname
-    });
 });
 
 // 영수증 분석 API
@@ -206,7 +218,7 @@ app.post('/api/analyze-receipt', async (req, res) => {
         }
 
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        
+
         const imageData = fs.readFileSync(imagePath);
         const base64Image = imageData.toString('base64');
 
@@ -244,13 +256,13 @@ app.post('/api/analyze-receipt', async (req, res) => {
 
         const response = await result.response;
         const text = response.text();
-        
+
         // JSON 추출 (마크다운 코드 블록 제거 등)
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
             throw new Error('Failed to parse AI response as JSON');
         }
-        
+
         const structuredData = JSON.parse(jsonMatch[0]);
         res.json(structuredData);
 
